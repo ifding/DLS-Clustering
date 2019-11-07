@@ -5,15 +5,6 @@ def sample_Z(batch, z_dim , sampler = 'one_hot', num_class = 10, n_cat = 1, labe
     if sampler == 'mul_cat':
         if label_index is None:
             label_index = np.random.randint(low = 0 , high = num_class, size = batch)
-        #return np.hstack((0.10 * np.random.randn(batch, z_dim-num_class*n_cat),
-        #                  np.tile(np.eye(num_class)[label_index], (1, n_cat))))
-
-        #print(0.1 * np.random.randn(batch, num_class) + np.eye(num_class)[label_index])
-
-        #print(np.random.randn(batch, num_class).shape)
-
-        #exit()
-
 
         return np.hstack((0.10 * np.random.randn(batch, z_dim-num_class), (0.1 * np.random.randn(batch, num_class) + np.eye(num_class)[label_index])))
 

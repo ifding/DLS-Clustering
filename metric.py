@@ -27,6 +27,9 @@ def compute_purity(y_pred, y_true):
             cluster_labels = y_true[indices]
             majority_label = np.argmax(np.bincount(cluster_labels))
             correct += np.sum(cluster_labels == majority_label)
-        
+
+            #cor = np.sum(cluster_labels == majority_label)            
+            #print(cluster, len(indices), float(cor)/len(indices))
+ 
         return float(correct) / len(y_pred)
 

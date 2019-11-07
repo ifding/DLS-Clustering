@@ -1,5 +1,6 @@
 import numpy as np
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.keras.datasets import mnist
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 mnist = input_data.read_data_sets('./data/mnist')
@@ -26,6 +27,10 @@ class DataSampler(object):
         return np.reshape(data, [data.shape[0]] + self.shape)
 
     def load_all(self):
+
+        #(x_train, y_train), (x_test, y_test) = mnist.load_data('./data/mnist')
+        #X = np.concatenate((x_train, x_test))
+        #Y = np.concatenate((y_train, y_test))
 
         X_train = mnist.train.images
         X_val = mnist.validation.images

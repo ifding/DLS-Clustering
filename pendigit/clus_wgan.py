@@ -50,8 +50,10 @@ class Generator(object):
         self.x_dim = x_dim
         self.name = 'pendigit/clus_wgan/g_net'
 
-    def __call__(self, z, keep=1.0):
+    def __call__(self, z, keep=1.0, reuse=True):
         with tf.variable_scope(self.name) as vs:
+            if reuse:
+                vs.reuse_variables()
             fc1 = tcl.fully_connected(
                 z, 256,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),

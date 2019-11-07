@@ -5,16 +5,15 @@ import datetime
 import argparse
 import importlib
 import tensorflow as tf
-from imageio import imsave
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
 
 import metric
-from visualize import *
 import util
 
 tf.set_random_seed(0)
+
 
 class clusGAN(object):
     def __init__(self, g_net, d_net, enc_net, x_sampler, z_sampler, data, model, sampler,
@@ -35,9 +34,9 @@ class clusGAN(object):
         self.beta_cycle_gen = beta_cycle_gen
         self.beta_cycle_label = beta_cycle_label
 
-
         self.x_dim = self.d_net.x_dim
         self.z_dim = self.g_net.z_dim
+
 
         self.x = tf.placeholder(tf.float32, [None, self.x_dim], name='x')
         self.z = tf.placeholder(tf.float32, [None, self.z_dim], name='z')
@@ -45,32 +44,21 @@ class clusGAN(object):
         self.z_gen = self.z[:,0:self.dim_gen]
         self.z_hot = self.z[:,self.dim_gen:]
 
-        self.x_ = self.g_net(self.z, reuse=False)        
+        self.x_ = self.g_net(self.z, reuse=False)
         self.z_enc_gen, self.z_enc_label, self.z_enc_logits = self.enc_net(self.x_, reuse=False)
         self.z_infer_gen, self.z_infer_label, self.z_infer_logits = self.enc_net(self.x)
 
         new_z = tf.concat([self.z_infer_gen, self.z_hot], 1)
         latent_z = tf.concat([self.z_infer_gen, self.z_infer_label], 1)
 
-        #print(new_z)
-
         new_x = self.g_net(new_z)
         recon_x = self.g_net(latent_z)
 
-
         z_infer_gen_new, z_infer_label_new, z_infer_logits_new = self.enc_net(new_x)
-        #z_infer_gen_recon, z_infer_label_recon, z_infer_logits_recon = self.enc_net(recon_x)
-
 
 
         self.d = self.d_net(self.x, reuse=False)
         self.d_ = self.d_net(self.x_)
-
-
-        #self.g_loss = tf.reduce_mean(self.d_) + \
-        #              self.beta_cycle_gen * tf.reduce_mean(tf.square(self.z_gen - self.z_enc_gen)) +\
-        #              self.beta_cycle_label * tf.reduce_mean(
-        #                  tf.nn.softmax_cross_entropy_with_logits(logits=self.z_enc_logits,labels=self.z_hot))
 
         self.g_loss = tf.reduce_mean(self.d_) + \
                       tf.reduce_mean(tf.square(self.x - recon_x)) +\
@@ -79,10 +67,9 @@ class clusGAN(object):
                       self.beta_cycle_label * tf.reduce_mean(
                            tf.nn.softmax_cross_entropy_with_logits(logits=self.z_enc_logits,labels=self.z_hot)) +\
                       self.beta_cycle_label * tf.reduce_mean(
-                           tf.nn.softmax_cross_entropy_with_logits(logits=z_infer_logits_new,labels=self.z_hot))  
+                           tf.nn.softmax_cross_entropy_with_logits(logits=z_infer_logits_new,labels=self.z_hot))                                                  
 
-
-
+        
         self.d_loss = tf.reduce_mean(self.d) - tf.reduce_mean(self.d_)
 
         epsilon = tf.random_uniform([], 0.0, 1.0)
@@ -98,7 +85,7 @@ class clusGAN(object):
         self.d_adam = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9) \
                 .minimize(self.d_loss, var_list=self.d_net.vars)
         self.g_adam = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9) \
-                .minimize(self.g_loss, var_list=[self.g_net.vars, self.enc_net.vars]) 
+                .minimize(self.g_loss, var_list=[self.g_net.vars, self.enc_net.vars])
 
         # Reconstruction Nodes
         self.recon_loss = tf.reduce_mean(tf.abs(self.x - self.x_), 1)
@@ -110,7 +97,6 @@ class clusGAN(object):
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
-        
         
     def mmd_penalty(self, sample_qz, sample_pz):
         verbose = False
@@ -132,20 +118,6 @@ class clusGAN(object):
         dotprods = tf.matmul(sample_qz, sample_pz, transpose_b=True)
         distances = norms_qz + tf.transpose(norms_pz) - 2. * dotprods
 
-        # if opts['verbose']:
-        #     distances = tf.Print(
-        #         distances,
-        #         [tf.nn.top_k(tf.reshape(distances_qz, [-1]), 1).values[0]],
-        #         'Maximal Qz squared pairwise distance:')
-        #     distances = tf.Print(distances, [tf.reduce_mean(distances_qz)],
-        #                         'Average Qz squared pairwise distance:')
-
-        #     distances = tf.Print(
-        #         distances,
-        #         [tf.nn.top_k(tf.reshape(distances_pz, [-1]), 1).values[0]],
-        #         'Maximal Pz squared pairwise distance:')
-        #     distances = tf.Print(distances, [tf.reduce_mean(distances_pz)],
-        #                         'Average Pz squared pairwise distance:')
 
         if kernel == 'RBF':
             # Median heuristic for the sigma^2 of Gaussian kernel
@@ -193,15 +165,15 @@ class clusGAN(object):
                 res2 = tf.reduce_sum(res2) * 2. / (nf * nf)
                 stat += res1 - res2
         return stat        
-        
+              
 
-    def train(self, num_batches=500000):
+    def train(self, num_batches=100000):
 
         now = datetime.datetime.now(dateutil.tz.tzlocal())
         timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
 
         batch_size = self.batch_size
-        plt.ion()
+
         self.sess.run(tf.global_variables_initializer())
         start_time = time.time()
         print(
@@ -209,12 +181,8 @@ class clusGAN(object):
             format(self.model, self.data, self.sampler, self.z_dim, self.beta_cycle_gen, self.beta_cycle_label))
 
 
-        im_save_dir = 'logs/{}/{}/{}_z{}_cyc{}_gen{}'.format(self.data, self.model, self.sampler, self.z_dim,
-                                                                 self.beta_cycle_label, self.beta_cycle_gen)
-        if not os.path.exists(im_save_dir):
-            os.makedirs(im_save_dir)
-
         for t in range(0, num_batches):
+
             d_iters = 5
 
             for _ in range(0, d_iters):
@@ -228,7 +196,6 @@ class clusGAN(object):
             if (t+1) % 100 == 0:
                 bx = self.x_sampler.train(batch_size)
                 bz = self.z_sampler(batch_size, self.z_dim, self.sampler, self.num_classes, self.n_cat)
-      
 
                 d_loss = self.sess.run(
                     self.d_loss, feed_dict={self.x: bx, self.z: bz}
@@ -239,23 +206,13 @@ class clusGAN(object):
                 print('Iter [%8d] Time [%5.4f] d_loss [%.4f] g_loss [%.4f]' %
                       (t+1, time.time() - start_time, d_loss, g_loss))
 
-
-            if (t+1) % 5000 == 0:
-                bz = self.z_sampler(batch_size, self.z_dim, self.sampler, self.num_classes, self.n_cat)
-                bx = self.sess.run(self.x_, feed_dict={self.z: bz})
-                bx = xs.data2img(bx)
-                bx = grid_transform(bx, xs.shape)
-
-                imsave('logs/{}/{}/{}_z{}_cyc{}_gen{}/{}.png'.format(self.data, self.model, self.sampler,
-                          self.z_dim, self.beta_cycle_label, self.beta_cycle_gen, (t+1) / 100), bx)
-
-        self.recon_enc(timestamp, val = True)
+        self.recon_enc(timestamp, val=True)
         self.save(timestamp)
 
     def save(self, timestamp):
 
         checkpoint_dir = 'checkpoint_dir/{}/{}_{}_{}_z{}_cyc{}_gen{}'.format(self.data, timestamp, self.model, self.sampler,
-                                                                            self.z_dim, self.beta_cycle_label,
+                                                                             self.z_dim, self.beta_cycle_label,
                                                                              self.beta_cycle_gen)
 
         if not os.path.exists(checkpoint_dir):
@@ -283,40 +240,18 @@ class clusGAN(object):
         print('Restored model weights.')
 
 
-
-    def _gen_samples(self, num_images):
+    def _gen_samples(self, num_samples):
 
         batch_size = self.batch_size
         bz = self.z_sampler(batch_size, self.z_dim, self.sampler, self.num_classes, self.n_cat)  
-        fake_im = self.sess.run(self.x_, feed_dict = {self.z : bz})
-        for t in range(num_images // batch_size):
+        fake_samples = self.sess.run(self.x_, feed_dict = {self.z : bz})
+        for t in range(num_samples // batch_size):
             bz = self.z_sampler(batch_size, self.z_dim, self.sampler, self.num_classes, self.n_cat)
-            im = self.sess.run(self.x_, feed_dict = {self.z : bz})
-            fake_im = np.vstack((fake_im, im))
+            samp = self.sess.run(self.x_, feed_dict = {self.z : bz})
+            fake_samples = np.vstack((fake_samples, samp))
 
-        print(' Generated {} images .'.format(fake_im.shape[0]))
-        np.save('./Image_samples/{}/{}_{}_K_{}_gen_images.npy'.format(self.data, self.model, self.sampler, self.num_classes), fake_im)
-
-
-    def gen_from_all_modes(self):
-
-        if self.sampler == 'one_hot':
-            batch_size = 1000
-            label_index = np.tile(np.arange(self.num_classes), int(np.ceil(batch_size * 1.0 / self.num_classes)))
-
-            bz = self.z_sampler(batch_size, self.z_dim, self.sampler, num_class=self.num_classes,
-                                    n_cat= self.n_cat, label_index=label_index)
-            bx = self.sess.run(self.x_, feed_dict={self.z: bz})
-
-            for m in range(self.num_classes):
-                print('Generating samples from mode {} ...'.format(m))
-                mode_index = np.where(label_index == m)[0]
-                mode_bx = bx[mode_index, :]
-                mode_bx = xs.data2img(mode_bx)
-                mode_bx = grid_transform(mode_bx, xs.shape)
-
-                imsave('logs/{}/{}/{}_z{}_cyc{}_gen{}/mode{}_samples.png'.format(self.data, self.model, self.sampler,
-                        self.z_dim, self.beta_cycle_label, self.beta_cycle_gen, m), mode_bx)
+        print(' Generated {} samples .'.format(fake_samples.shape[0]))
+        np.save('./Image_samples/{}/{}_{}_K_{}_gen_images.npy'.format(self.data, self.model, self.sampler, self.num_classes), fake_samples)
 
     def recon_enc(self, timestamp, val = True):
 
@@ -331,7 +266,8 @@ class clusGAN(object):
         latent = np.zeros(shape=(num_pts_to_plot, self.z_dim))
 
         print('Data Shape = {}, Labels Shape = {}'.format(data_recon.shape, label_recon.shape))
-        for b in range(int(np.ceil(num_pts_to_plot * 1.0 / recon_batch_size))):
+        for b in range(int(np.ceil(num_pts_to_plot*1.0 / recon_batch_size))):
+
             if (b+1)*recon_batch_size > num_pts_to_plot:
                pt_indx = np.arange(b*recon_batch_size, num_pts_to_plot)
             else:
@@ -342,33 +278,29 @@ class clusGAN(object):
 
             latent[pt_indx, :] = np.concatenate((zhats_gen, zhats_label), axis=1)
 
-
-        if self.beta_cycle_gen == 0:
-            self._eval_cluster(latent[:, self.dim_gen:], label_recon, timestamp, val)
-        else:
-            self._eval_cluster(latent, label_recon, timestamp, val)
+        self._eval_cluster(latent[:, self.dim_gen:], label_recon, timestamp, val)
 
 
     def _eval_cluster(self, latent_rep, labels_true, timestamp, val):
-               
-        if self.data == 'fashion' and self.num_classes == 5:
-             map_labels = {0 : 0, 1 : 1, 2 : 2, 3 : 0, 4 : 2, 5 : 3, 6 : 2, 7 : 3, 8 : 4, 9 : 3}
-             labels_true = np.array([map_labels[i] for i in labels_true])
 
-        km = KMeans(n_clusters=max(self.num_classes, len(np.unique(labels_true))), random_state=0).fit(latent_rep)
-        labels_pred = km.labels_
+        if self.data == '10x_73k':
+            map_labels = {0: 0, 1: 1, 2: 2, 4: 3, 6: 4, 7: 5, 8: 6, 9: 7}
+            labels_true = np.array([map_labels[i] for i in labels_true])
+
+        #km = KMeans(n_clusters=max(self.num_classes, len(np.unique(labels_true))), random_state=0).fit(latent_rep)
+        #labels_pred = km.labels_
+        labels_pred = np.argmax(latent_rep, axis=1)
 
         purity = metric.compute_purity(labels_pred, labels_true)
         ari = adjusted_rand_score(labels_true, labels_pred)
         nmi = normalized_mutual_info_score(labels_true, labels_pred)
-
 
         if val:
             data_split = 'Validation'
         else:
             data_split = 'Test'
             #data_split = 'All'
-
+            
         print('Data = {}, Model = {}, sampler = {}, z_dim = {}, beta_label = {}, beta_gen = {} '
               .format(self.data, self.model, self.sampler, self.z_dim, self.beta_cycle_label, self.beta_cycle_gen))
         print(' #Points = {}, K = {}, Purity = {},  NMI = {}, ARI = {},  '
@@ -383,17 +315,16 @@ class clusGAN(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('')
-    parser.add_argument('--data', type=str, default='mnist')
+    parser.add_argument('--data', type=str, default='10x_73k')
     parser.add_argument('--model', type=str, default='clus_wgan')
     parser.add_argument('--sampler', type=str, default='one_hot')
-    parser.add_argument('--K', type=int, default=10)
+    parser.add_argument('--K', type=int, default=8)
     parser.add_argument('--dz', type=int, default=30)
     parser.add_argument('--bs', type=int, default=64)
     parser.add_argument('--beta_n', type=float, default=10.0)
     parser.add_argument('--beta_c', type=float, default=10.0)
     parser.add_argument('--timestamp', type=str, default='')
     parser.add_argument('--train', type=str, default='False')
-
     args = parser.parse_args()
     data = importlib.import_module(args.data)
     model = importlib.import_module(args.data + '.' + args.model)
@@ -413,9 +344,9 @@ if __name__ == '__main__':
     xs = data.DataSampler()
     zs = util.sample_Z
 
-
     cl_gan = clusGAN(g_net, d_net, enc_net, xs, zs, args.data, args.model, args.sampler,
                      num_classes, dim_gen, n_cat, batch_size, beta_cycle_gen, beta_cycle_label)
+
     if args.train == 'True':
         cl_gan.train()
     else:
@@ -427,7 +358,5 @@ if __name__ == '__main__':
         else:
             cl_gan.load(pre_trained=False, timestamp = timestamp)
 
-        cl_gan.recon_enc(timestamp, val=False)
-
-
-
+        #cl_gan.recon_enc(timestamp, val=False)
+        cl_gan.recon_enc(timestamp, val=True)

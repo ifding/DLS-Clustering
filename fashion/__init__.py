@@ -2,7 +2,7 @@ import numpy as np
 from tensorflow.examples.tutorials.mnist import input_data
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-mnist = input_data.read_data_sets('./data/fashion')
+mnist = input_data.read_data_sets('./data/fashion', source_url='http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/')
 
 
 class DataSampler(object):
