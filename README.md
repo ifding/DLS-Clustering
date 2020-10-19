@@ -10,6 +10,7 @@ The code has been tested with the following versions of packages.
 - Python 3
 - Tensorflow 1.14.0
 - Numpy 1.14.2
+- scanpy 1.5.1
 
 ## Datasets
 
