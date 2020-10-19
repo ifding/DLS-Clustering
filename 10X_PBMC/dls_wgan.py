@@ -6,9 +6,9 @@ def leaky_relu(x, alpha=0.2):
     return tf.maximum(tf.minimum(0.0, alpha * x), x)
 
 class Discriminator(object):
-    def __init__(self, x_dim=720):
+    def __init__(self, x_dim=1000):
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/d_net'
+        self.name = '10X_PBMC/dls_wgan/d_net'
 
     def __call__(self, x, reuse=True):
         with tf.variable_scope(self.name) as vs:
@@ -41,13 +41,16 @@ class Discriminator(object):
 
 
 class Generator(object):
-    def __init__(self, z_dim = 38, x_dim = 720):
+    def __init__(self, z_dim = 38, x_dim = 1000):
         self.z_dim = z_dim
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/g_net'
+        self.name = '10X_PBMC/dls_wgan/g_net'
 
-    def __call__(self, z):
-        with tf.variable_scope(self.name) as vs:            
+    def __call__(self, z, reuse=True):
+        with tf.variable_scope(self.name) as vs: 
+            if reuse:
+                vs.reuse_variables()
+                   
             fc1 = tcl.fully_connected(
                 z, 256,
                 weights_initializer=tf.random_normal_initializer(stddev=0.02),
@@ -76,11 +79,11 @@ class Generator(object):
         return [var for var in tf.global_variables() if self.name in var.name]
 
 class Encoder(object):
-    def __init__(self, z_dim = 38, dim_gen = 30, x_dim = 720):
+    def __init__(self, z_dim = 38, dim_gen = 30, x_dim = 1000):
         self.z_dim = z_dim
         self.dim_gen = dim_gen
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/enc_net'
+        self.name = '10X_PBMC/dls_wgan/enc_net'
 
     def __call__(self, x, reuse=True):
 

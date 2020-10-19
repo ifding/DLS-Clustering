@@ -44,32 +44,20 @@ class clusGAN(object):
         self.z_gen = self.z[:,0:self.dim_gen]
         self.z_hot = self.z[:,self.dim_gen:]
 
-        self.x_ = self.g_net(self.z, reuse=False)
+        self.x_ = self.g_net(self.z)
         self.z_enc_gen, self.z_enc_label, self.z_enc_logits = self.enc_net(self.x_, reuse=False)
         self.z_infer_gen, self.z_infer_label, self.z_infer_logits = self.enc_net(self.x)
-
-        new_z = tf.concat([self.z_infer_gen, self.z_hot], 1)
-        latent_z = tf.concat([self.z_infer_gen, self.z_infer_label], 1)
-
-        new_x = self.g_net(new_z)
-        recon_x = self.g_net(latent_z)
-
-        z_infer_gen_new, z_infer_label_new, z_infer_logits_new = self.enc_net(new_x)
 
 
         self.d = self.d_net(self.x, reuse=False)
         self.d_ = self.d_net(self.x_)
 
-        self.g_loss = tf.reduce_mean(self.d_) + \
-                      tf.reduce_mean(tf.square(self.x - recon_x)) +\
-                      self.beta_cycle_gen * tf.reduce_mean(tf.square(z_infer_gen_new - self.z_infer_gen)) +\
-                      self.beta_cycle_gen * self.mmd_penalty(self.z_infer_gen, self.z_gen) +\
-                      self.beta_cycle_label * tf.reduce_mean(
-                           tf.nn.softmax_cross_entropy_with_logits(logits=self.z_enc_logits,labels=self.z_hot)) +\
-                      self.beta_cycle_label * tf.reduce_mean(
-                           tf.nn.softmax_cross_entropy_with_logits(logits=z_infer_logits_new,labels=self.z_hot))                                                  
 
-        
+        self.g_loss = tf.reduce_mean(self.d_) + \
+                      self.beta_cycle_gen * tf.reduce_mean(tf.square(self.z_gen - self.z_enc_gen)) +\
+                      self.beta_cycle_label * tf.reduce_mean(
+                          tf.nn.softmax_cross_entropy_with_logits(logits=self.z_enc_logits,labels=self.z_hot))
+
         self.d_loss = tf.reduce_mean(self.d) - tf.reduce_mean(self.d_)
 
         epsilon = tf.random_uniform([], 0.0, 1.0)
@@ -97,75 +85,6 @@ class clusGAN(object):
         run_config.gpu_options.per_process_gpu_memory_fraction = 1.0
         run_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=run_config)
-        
-    def mmd_penalty(self, sample_qz, sample_pz):
-        verbose = False
-        sigma2_p = 1.0 ** 2
-        kernel = 'RBF' #'IMQ'
-        n = self.batch_size
-        n = tf.cast(n, tf.int32)
-        nf = tf.cast(n, tf.float32)
-        half_size = (n * n - n) // 2
-
-        norms_pz = tf.reduce_sum(tf.square(sample_pz), axis=1, keep_dims=True)
-        dotprods_pz = tf.matmul(sample_pz, sample_pz, transpose_b=True)
-        distances_pz = norms_pz + tf.transpose(norms_pz) - 2. * dotprods_pz
-
-        norms_qz = tf.reduce_sum(tf.square(sample_qz), axis=1, keep_dims=True)
-        dotprods_qz = tf.matmul(sample_qz, sample_qz, transpose_b=True)
-        distances_qz = norms_qz + tf.transpose(norms_qz) - 2. * dotprods_qz
-
-        dotprods = tf.matmul(sample_qz, sample_pz, transpose_b=True)
-        distances = norms_qz + tf.transpose(norms_pz) - 2. * dotprods
-
-
-        if kernel == 'RBF':
-            # Median heuristic for the sigma^2 of Gaussian kernel
-            sigma2_k = tf.nn.top_k(
-                tf.reshape(distances, [-1]), half_size).values[half_size - 1]
-            sigma2_k += tf.nn.top_k(
-                tf.reshape(distances_qz, [-1]), half_size).values[half_size - 1]
-            # Maximal heuristic for the sigma^2 of Gaussian kernel
-            # sigma2_k = tf.nn.top_k(tf.reshape(distances_qz, [-1]), 1).values[0]
-            # sigma2_k += tf.nn.top_k(tf.reshape(distances, [-1]), 1).values[0]
-            # sigma2_k = opts['latent_space_dim'] * sigma2_p
-            if verbose:
-                sigma2_k = tf.Print(sigma2_k, [sigma2_k], 'Kernel width:')
-            res1 = tf.exp( - distances_qz / 2. / sigma2_k)
-            res1 += tf.exp( - distances_pz / 2. / sigma2_k)
-            res1 = tf.multiply(res1, 1. - tf.eye(n))
-            res1 = tf.reduce_sum(res1) / (nf * nf - nf)
-            res2 = tf.exp( - distances / 2. / sigma2_k)
-            res2 = tf.reduce_sum(res2) * 2. / (nf * nf)
-            stat = res1 - res2
-        elif kernel == 'IMQ':
-            # k(x, y) = C / (C + ||x - y||^2)
-            # C = tf.nn.top_k(tf.reshape(distances, [-1]), half_size).values[half_size - 1]
-            # C += tf.nn.top_k(tf.reshape(distances_qz, [-1]), half_size).values[half_size - 1]
-            
-            Cbase = 2. * self.z_dim * sigma2_p
-            
-            #if opts['pz'] == 'normal':
-            #    Cbase = 2. * opts['zdim'] * sigma2_p
-            #elif opts['pz'] == 'sphere':
-            #    Cbase = 2.
-            #elif opts['pz'] == 'uniform':
-                # E ||x - y||^2 = E[sum (xi - yi)^2]
-                #               = zdim E[(xi - yi)^2]
-                #               = const * zdim
-            #    Cbase = opts['zdim']
-            stat = 0.
-            for scale in [.1, .2, .5, 1., 2., 5., 10.]:
-                C = Cbase * scale
-                res1 = C / (C + distances_qz)
-                res1 += C / (C + distances_pz)
-                res1 = tf.multiply(res1, 1. - tf.eye(n))
-                res1 = tf.reduce_sum(res1) / (nf * nf - nf)
-                res2 = C / (C + distances)
-                res2 = tf.reduce_sum(res2) * 2. / (nf * nf)
-                stat += res1 - res2
-        return stat        
-              
 
     def train(self, num_batches=100000):
 
@@ -191,7 +110,7 @@ class clusGAN(object):
                 self.sess.run(self.d_adam, feed_dict={self.x: bx, self.z: bz})
 
             bz = self.z_sampler(batch_size, self.z_dim, self.sampler, self.num_classes, self.n_cat)
-            self.sess.run(self.g_adam, feed_dict={self.x: bx, self.z: bz})
+            self.sess.run(self.g_adam, feed_dict={self.z: bz})
 
             if (t+1) % 100 == 0:
                 bx = self.x_sampler.train(batch_size)
@@ -201,7 +120,7 @@ class clusGAN(object):
                     self.d_loss, feed_dict={self.x: bx, self.z: bz}
                 )
                 g_loss = self.sess.run(
-                    self.g_loss, feed_dict={self.x: bx, self.z: bz}
+                    self.g_loss, feed_dict={self.z: bz}
                 )
                 print('Iter [%8d] Time [%5.4f] d_loss [%.4f] g_loss [%.4f]' %
                       (t+1, time.time() - start_time, d_loss, g_loss))
@@ -278,18 +197,19 @@ class clusGAN(object):
 
             latent[pt_indx, :] = np.concatenate((zhats_gen, zhats_label), axis=1)
 
-        self._eval_cluster(latent[:, self.dim_gen:], label_recon, timestamp, val)
+        if self.beta_cycle_gen == 0:
+            self._eval_cluster(latent[:, self.dim_gen:], label_recon, timestamp, val)
+        else:
+            self._eval_cluster(latent, label_recon, timestamp, val)
 
 
     def _eval_cluster(self, latent_rep, labels_true, timestamp, val):
 
-        if self.data == '10x_73k':
-            map_labels = {0: 0, 1: 1, 2: 2, 4: 3, 6: 4, 7: 5, 8: 6, 9: 7}
-            labels_true = np.array([map_labels[i] for i in labels_true])
+        map_labels = {0: 0, 1: 1, 2: 2, 4: 3, 6: 4, 7: 5, 8: 6, 9: 7}
+        labels_true = np.array([map_labels[i] for i in labels_true])
 
-        #km = KMeans(n_clusters=max(self.num_classes, len(np.unique(labels_true))), random_state=0).fit(latent_rep)
-        #labels_pred = km.labels_
-        labels_pred = np.argmax(latent_rep, axis=1)
+        km = KMeans(n_clusters=max(self.num_classes, len(np.unique(labels_true))), random_state=0).fit(latent_rep)
+        labels_pred = km.labels_
 
         purity = metric.compute_purity(labels_pred, labels_true)
         ari = adjusted_rand_score(labels_true, labels_pred)
@@ -300,7 +220,7 @@ class clusGAN(object):
         else:
             data_split = 'Test'
             #data_split = 'All'
-            
+
         print('Data = {}, Model = {}, sampler = {}, z_dim = {}, beta_label = {}, beta_gen = {} '
               .format(self.data, self.model, self.sampler, self.z_dim, self.beta_cycle_label, self.beta_cycle_gen))
         print(' #Points = {}, K = {}, Purity = {},  NMI = {}, ARI = {},  '
@@ -358,5 +278,5 @@ if __name__ == '__main__':
         else:
             cl_gan.load(pre_trained=False, timestamp = timestamp)
 
-        #cl_gan.recon_enc(timestamp, val=False)
-        cl_gan.recon_enc(timestamp, val=True)
+        cl_gan.recon_enc(timestamp, val=False)
+

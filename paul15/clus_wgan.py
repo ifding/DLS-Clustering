@@ -8,7 +8,7 @@ def leaky_relu(x, alpha=0.2):
 class Discriminator(object):
     def __init__(self, x_dim=720):
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/d_net'
+        self.name = '10X_PBMC/clus_wgan/d_net'
 
     def __call__(self, x, reuse=True):
         with tf.variable_scope(self.name) as vs:
@@ -44,7 +44,7 @@ class Generator(object):
     def __init__(self, z_dim = 38, x_dim = 720):
         self.z_dim = z_dim
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/g_net'
+        self.name = '10X_PBMC/clus_wgan/g_net'
 
     def __call__(self, z):
         with tf.variable_scope(self.name) as vs:            
@@ -80,7 +80,7 @@ class Encoder(object):
         self.z_dim = z_dim
         self.dim_gen = dim_gen
         self.x_dim = x_dim
-        self.name = '10x_73k/clus_wgan/enc_net'
+        self.name = '10X_PBMC/clus_wgan/enc_net'
 
     def __call__(self, x, reuse=True):
 
